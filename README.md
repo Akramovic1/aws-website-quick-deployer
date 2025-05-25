@@ -1,4 +1,4 @@
-# AWS Static Website Deployer
+# AWS Website Quick Deployer
 
 > **Automate static website hosting on AWS in under 5 minutes**
 
