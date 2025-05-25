@@ -115,6 +115,25 @@ aws s3 sync ./updated-website s3://mysite.com --delete
 ./cleanup-website.sh mysite.com
 ```
 
+### Python Version
+
+If you prefer Python, you can use the `aws-website-deployer.py` script for similar functionality:
+
+```bash
+# Install dependencies first
+pip install boto3
+
+# Deploy
+python aws-website-deployer.py deploy example.com
+python aws-website-deployer.py deploy example.com --website-folder ./website
+
+# Check status
+python aws-website-deployer.py status example.com
+
+# Cleanup
+python aws-website-deployer.py cleanup example.com
+```
+
 ## 🔑 AWS Credentials
 
 The scripts auto-detect credentials in this order:
