@@ -1,601 +1,343 @@
-#!/bin/bash
+# AWS Website Quick Deployer 🚀
 
-# AWS Static Website Deployer - Main Control Script
-# Interactive terminal program to control all deployment scripts
-# Usage: ./main-deployer.sh
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![AWS](https://img.shields.io/badge/AWS-orange.svg)
+![Bash](https://img.shields.io/badge/bash-4.0+-green.svg)
+![Python](https://img.shields.io/badge/python-3.6+-blue.svg)
 
-set -e
+> **Deploy static websites to AWS in under 5 minutes with SSL, CDN, and custom domain - all automated!**
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
-CYAN='\033[0;36m'
-WHITE='\033[1;37m'
-NC='\033[0m' # No Color
+A comprehensive, production-ready deployment toolkit that automates the entire process of hosting static websites on AWS. Features multiple deployment methods, interactive CLI, and complete infrastructure management.
 
-# Emojis
-ROCKET="🚀"
-TERMINAL="💻"
-PYTHON="🐍"
-KEY="🔑"
-TRASH="🗑️"
-GEAR="⚙️"
-INFO="ℹ️"
-CHECK="✅"
-WARNING="⚠️"
-ERROR="❌"
+## ✨ Features
 
-# Function to print colored output
-print_header() {
-    echo -e "${PURPLE}${1}${NC}"
-}
+- **🎯 One-Command Deployment** - Deploy complete websites with a single command
+- **🔒 Automatic SSL** - Free, auto-renewing SSL certificates via AWS Certificate Manager
+- **🌐 Global CDN** - CloudFront distribution for lightning-fast global delivery
+- **📱 Custom Domains** - Full DNS management with Route53
+- **🔄 Multiple Methods** - Bash scripts, Python tools, and credential-based options
+- **🧹 Easy Cleanup** - Complete resource removal with confirmation safeguards
+- **📊 Status Monitoring** - Real-time deployment status and health checks
+- **🎨 Sample Templates** - Built-in website templates for quick testing
 
-print_menu_item() {
-    echo -e "${CYAN}${1}${NC} ${2}"
-}
+## 🏗️ AWS Infrastructure Created
 
-print_info() {
-    echo -e "${BLUE}${INFO} ${1}${NC}"
-}
+This tool automatically provisions and configures:
 
-print_success() {
-    echo -e "${GREEN}${CHECK} ${1}${NC}"
-}
+| Service | Purpose | Monthly Cost (Est.) |
+|---------|---------|-------------------|
+| **S3 Buckets** | Website hosting + www redirect | ~$0.023/GB |
+| **CloudFront** | Global CDN distribution | ~$0.085/GB + $0.0075/10k requests |
+| **Route53** | DNS hosting and management | $0.50/hosted zone |
+| **Certificate Manager** | SSL/TLS certificates | **FREE** |
+| **IAM Roles** | Security policies and permissions | **FREE** |
 
-print_warning() {
-    echo -e "${YELLOW}${WARNING} ${1}${NC}"
-}
+**💰 Total estimated cost for small websites: $1-5/month**
 
-print_error() {
-    echo -e "${RED}${ERROR} ${1}${NC}"
-}
+## 🚀 Quick Start
 
-print_title() {
-    echo -e "${WHITE}${1}${NC}"
-}
+### Prerequisites
 
-# Function to display main menu
-show_main_menu() {
-    clear
-    echo
-    print_header "╔══════════════════════════════════════════════════════════════╗"
-    print_header "║            AWS Static Website Deployer Control              ║"
-    print_header "╚══════════════════════════════════════════════════════════════╝"
-    echo
-    print_title "                    Choose Your Deployment Method:"
-    echo
-    print_menu_item "1. ${ROCKET}" "Standard Deployment (Bash Script)"
-    print_menu_item "2. ${KEY}" "Deploy with Credentials (Inline)"
-    print_menu_item "3. ${PYTHON}" "Python Deployment (Full Featured)"
-    echo
-    print_title "                      Management Options:"
-    echo
-    print_menu_item "4. ${TRASH}" "Cleanup Resources (Standard)"
-    print_menu_item "5. ${KEY}${TRASH}" "Cleanup with Credentials"
-    print_menu_item "6. ${PYTHON}${TRASH}" "Python Cleanup"
-    print_menu_item "7. ${PYTHON}${INFO}" "Check Deployment Status"
-    echo
-    print_title "                         Utilities:"
-    echo
-    print_menu_item "8. ${GEAR}" "Prerequisites Check"
-    print_menu_item "9. ${INFO}" "View Documentation"
-    print_menu_item "0. ${CHECK}" "Exit"
-    echo
-    print_header "══════════════════════════════════════════════════════════════"
-    echo
-}
+Before you begin, ensure you have:
 
-# Function to read user input with validation
-read_input() {
-    local prompt="$1"
-    local var_name="$2"
-    local validation="$3"
-    
-    while true; do
-        echo -n -e "${CYAN}${prompt}: ${NC}"
-        read value
-        
-        if [ -z "$value" ]; then
-            print_error "Input cannot be empty. Please try again."
-            continue
-        fi
-        
-        # Domain validation
-        if [ "$validation" = "domain" ]; then
-            if [[ ! $value =~ ^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$ ]]; then
-                print_error "Invalid domain format. Example: example.com"
-                continue
-            fi
-        fi
-        
-        # Directory validation
-        if [ "$validation" = "directory" ]; then
-            if [ "$value" != "skip" ] && [ ! -d "$value" ]; then
-                print_error "Directory does not exist. Enter 'skip' to create sample website."
-                continue
-            fi
-        fi
-        
-        # AWS access key validation
-        if [ "$validation" = "access_key" ]; then
-            if [[ ! $value =~ ^AKIA[A-Z0-9]{16}$ ]]; then
-                print_warning "Access key format looks unusual (should start with AKIA and be 20 chars)"
-                echo -n -e "${YELLOW}Continue anyway? (y/n): ${NC}"
-                read confirm
-                if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
-                    continue
-                fi
-            fi
-        fi
-        
-        # AWS secret key validation
-        if [ "$validation" = "secret_key" ]; then
-            if [ ${#value} -ne 40 ]; then
-                print_warning "Secret key length is unusual (should be 40 characters)"
-                echo -n -e "${YELLOW}Continue anyway? (y/n): ${NC}"
-                read confirm
-                if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
-                    continue
-                fi
-            fi
-        fi
-        
-        eval "$var_name='$value'"
-        break
-    done
-}
+- [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html) installed and configured
+- [jq](https://stedolan.github.io/jq/) command-line JSON processor
+- A registered domain name
+- Basic knowledge of AWS services
 
-# Function to check prerequisites
-check_prerequisites() {
-    clear
-    print_header "Checking Prerequisites..."
-    echo
-    
-    # Check AWS CLI
-    if command -v aws &> /dev/null; then
-        print_success "AWS CLI is installed"
-        aws --version
-    else
-        print_error "AWS CLI is not installed"
-        echo "Install from: https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html"
-    fi
-    echo
-    
-    # Check jq
-    if command -v jq &> /dev/null; then
-        print_success "jq is installed"
-        jq --version
-    else
-        print_error "jq is not installed"
-        echo "Ubuntu/Debian: sudo apt-get install jq"
-        echo "macOS: brew install jq"
-    fi
-    echo
-    
-    # Check Python (for Python scripts)
-    if command -v python3 &> /dev/null; then
-        print_success "Python 3 is installed"
-        python3 --version
-    else
-        print_warning "Python 3 is not installed (needed for Python deployment option)"
-    fi
-    echo
-    
-    # Check boto3 (for Python scripts)
-    if python3 -c "import boto3" 2>/dev/null; then
-        print_success "boto3 is installed"
-    else
-        print_warning "boto3 is not installed (needed for Python deployment)"
-        echo "Install with: pip3 install boto3"
-    fi
-    echo
-    
-    # Check AWS credentials
-    if aws sts get-caller-identity &> /dev/null; then
-        print_success "AWS credentials are configured"
-        aws sts get-caller-identity --output table
-    else
-        print_warning "AWS credentials not configured"
-        echo "Configure with: aws configure"
-    fi
-    echo
-    
-    echo -n -e "${CYAN}Press Enter to continue...${NC}"
-    read
-}
+### Installation
 
-# Function for standard deployment
-standard_deployment() {
-    clear
-    print_header "Standard Deployment (Bash Script)"
-    echo
-    print_info "This will use your configured AWS credentials"
-    echo
-    
-    read_input "Enter domain name (e.g., example.com)" domain "domain"
-    read_input "Enter website folder path (or 'skip' for sample)" folder "directory"
-    
-    echo
-    print_info "Starting deployment..."
-    echo
-    
-    if [ "$folder" = "skip" ]; then
-        ./deploy-website.sh "$domain"
-    else
-        ./deploy-website.sh "$domain" "$folder"
-    fi
-    
-    echo
-    echo -n -e "${CYAN}Press Enter to continue...${NC}"
-    read
-}
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/Akramovic1/aws-website-quick-deployer.git
+   cd aws-website-quick-deployer
+   ```
 
-# Function for deployment with credentials
-deployment_with_credentials() {
-    clear
-    print_header "Deploy with Credentials"
-    echo
-    print_warning "Security Warning: Credentials will be passed as command line arguments"
-    print_info "Use this only in secure environments"
-    echo
-    
-    read_input "Enter AWS Access Key ID" access_key "access_key"
-    echo -n -e "${CYAN}Enter AWS Secret Access Key (hidden): ${NC}"
-    read -s secret_key
-    echo
-    read_input "Enter domain name (e.g., example.com)" domain "domain"
-    read_input "Enter website folder path (or 'skip' for sample)" folder "directory"
-    read_input "Enter AWS region (default: us-east-1)" region
-    
-    if [ -z "$region" ]; then
-        region="us-east-1"
-    fi
-    
-    echo
-    print_info "Starting deployment..."
-    echo
-    
-    if [ "$folder" = "skip" ]; then
-        ./deploy-with-credentials.sh "$access_key" "$secret_key" "$domain" "" "$region"
-    else
-        ./deploy-with-credentials.sh "$access_key" "$secret_key" "$domain" "$folder" "$region"
-    fi
-    
-    echo
-    echo -n -e "${CYAN}Press Enter to continue...${NC}"
-    read
-}
+2. **Make scripts executable:**
+   ```bash
+   chmod +x *.sh
+   ```
 
-# Function for Python deployment
-python_deployment() {
-    clear
-    print_header "Python Deployment"
-    echo
-    
-    # Check if Python and boto3 are available
-    if ! command -v python3 &> /dev/null; then
-        print_error "Python 3 is not installed"
-        echo -n -e "${CYAN}Press Enter to continue...${NC}"
-        read
-        return
-    fi
-    
-    if ! python3 -c "import boto3" 2>/dev/null; then
-        print_error "boto3 is not installed"
-        print_info "Install with: pip3 install boto3"
-        echo -n -e "${CYAN}Press Enter to continue...${NC}"
-        read
-        return
-    fi
-    
-    read_input "Enter domain name (e.g., example.com)" domain "domain"
-    read_input "Enter website folder path (or 'skip' for sample)" folder "directory"
-    read_input "Enter AWS region (default: us-east-1)" region
-    
-    if [ -z "$region" ]; then
-        region="us-east-1"
-    fi
-    
-    echo
-    print_info "Starting Python deployment..."
-    echo
-    
-    if [ "$folder" = "skip" ]; then
-        python3 aws-website-deployer.py deploy "$domain" --region "$region"
-    else
-        python3 aws-website-deployer.py deploy "$domain" --website-folder "$folder" --region "$region"
-    fi
-    
-    echo
-    echo -n -e "${CYAN}Press Enter to continue...${NC}"
-    read
-}
+3. **Run the interactive deployer:**
+   ```bash
+   ./main-deployer.sh
+   ```
 
-# Function for standard cleanup
-standard_cleanup() {
-    clear
-    print_header "Standard Cleanup"
-    echo
-    print_warning "This will permanently delete ALL AWS resources for the domain"
-    echo
-    
-    read_input "Enter domain name to cleanup" domain "domain"
-    
-    echo
-    print_warning "⚠️  FINAL WARNING: This will delete everything for $domain"
-    echo -n -e "${YELLOW}Are you absolutely sure? (type 'DELETE' to confirm): ${NC}"
-    read confirmation
-    
-    if [ "$confirmation" != "DELETE" ]; then
-        print_info "Cleanup cancelled"
-        echo -n -e "${CYAN}Press Enter to continue...${NC}"
-        read
-        return
-    fi
-    
-    echo
-    print_info "Starting cleanup..."
-    echo
-    
-    ./cleanup-website.sh "$domain"
-    
-    echo
-    echo -n -e "${CYAN}Press Enter to continue...${NC}"
-    read
-}
+### First Deployment
 
-# Function for cleanup with credentials
-cleanup_with_credentials() {
-    clear
-    print_header "Cleanup with Credentials"
-    echo
-    print_warning "This will permanently delete ALL AWS resources for the domain"
-    echo
-    
-    read_input "Enter AWS Access Key ID" access_key "access_key"
-    echo -n -e "${CYAN}Enter AWS Secret Access Key (hidden): ${NC}"
-    read -s secret_key
-    echo
-    read_input "Enter domain name to cleanup" domain "domain"
-    read_input "Enter AWS region (default: us-east-1)" region
-    
-    if [ -z "$region" ]; then
-        region="us-east-1"
-    fi
-    
-    echo
-    print_warning "⚠️  FINAL WARNING: This will delete everything for $domain"
-    echo -n -e "${YELLOW}Are you absolutely sure? (type 'DELETE' to confirm): ${NC}"
-    read confirmation
-    
-    if [ "$confirmation" != "DELETE" ]; then
-        print_info "Cleanup cancelled"
-        echo -n -e "${CYAN}Press Enter to continue...${NC}"
-        read
-        return
-    fi
-    
-    echo
-    print_info "Starting cleanup..."
-    echo
-    
-    ./cleanup-with-credentials.sh "$access_key" "$secret_key" "$domain" "$region"
-    
-    echo
-    echo -n -e "${CYAN}Press Enter to continue...${NC}"
-    read
-}
+The interactive menu will guide you through:
 
-# Function for Python cleanup
-python_cleanup() {
-    clear
-    print_header "Python Cleanup"
-    echo
-    
-    # Check if Python and boto3 are available
-    if ! command -v python3 &> /dev/null; then
-        print_error "Python 3 is not installed"
-        echo -n -e "${CYAN}Press Enter to continue...${NC}"
-        read
-        return
-    fi
-    
-    if ! python3 -c "import boto3" 2>/dev/null; then
-        print_error "boto3 is not installed"
-        print_info "Install with: pip3 install boto3"
-        echo -n -e "${CYAN}Press Enter to continue...${NC}"
-        read
-        return
-    fi
-    
-    print_warning "This will permanently delete ALL AWS resources for the domain"
-    echo
-    
-    read_input "Enter domain name to cleanup" domain "domain"
-    read_input "Enter AWS region (default: us-east-1)" region
-    
-    if [ -z "$region" ]; then
-        region="us-east-1"
-    fi
-    
-    echo
-    print_warning "⚠️  FINAL WARNING: This will delete everything for $domain"
-    echo -n -e "${YELLOW}Are you absolutely sure? (type 'DELETE' to confirm): ${NC}"
-    read confirmation
-    
-    if [ "$confirmation" != "DELETE" ]; then
-        print_info "Cleanup cancelled"
-        echo -n -e "${CYAN}Press Enter to continue...${NC}"
-        read
-        return
-    fi
-    
-    echo
-    print_info "Starting Python cleanup..."
-    echo
-    
-    python3 aws-website-deployer.py cleanup "$domain" --region "$region"
-    
-    echo
-    echo -n -e "${CYAN}Press Enter to continue...${NC}"
-    read
-}
+1. **Prerequisites Check** - Verify all required tools are installed
+2. **Choose Deployment Method** - Select from multiple options
+3. **Enter Domain Information** - Your custom domain (e.g., `example.com`)
+4. **Select Website Source** - Use your files or auto-generate a sample site
+5. **Deploy & Monitor** - Watch real-time deployment progress
 
-# Function to check deployment status
-check_status() {
-    clear
-    print_header "Check Deployment Status"
-    echo
-    
-    # Check if Python and boto3 are available
-    if ! command -v python3 &> /dev/null; then
-        print_error "Python 3 is not installed"
-        echo -n -e "${CYAN}Press Enter to continue...${NC}"
-        read
-        return
-    fi
-    
-    if ! python3 -c "import boto3" 2>/dev/null; then
-        print_error "boto3 is not installed"
-        print_info "Install with: pip3 install boto3"
-        echo -n -e "${CYAN}Press Enter to continue...${NC}"
-        read
-        return
-    fi
-    
-    read_input "Enter domain name to check" domain "domain"
-    read_input "Enter AWS region (default: us-east-1)" region
-    
-    if [ -z "$region" ]; then
-        region="us-east-1"
-    fi
-    
-    echo
-    print_info "Checking status..."
-    echo
-    
-    python3 aws-website-deployer.py status "$domain" --region "$region"
-    
-    echo
-    echo -n -e "${CYAN}Press Enter to continue...${NC}"
-    read
-}
+## 📖 Usage
 
-# Function to show documentation
-show_documentation() {
-    clear
-    print_header "AWS Static Website Deployer Documentation"
-    echo
-    
-    print_title "📚 Available Scripts:"
-    echo
-    print_info "1. deploy-website.sh - Standard deployment using AWS CLI config"
-    print_info "2. deploy-with-credentials.sh - Deploy with inline credentials"
-    print_info "3. aws-website-deployer.py - Python version with full features"
-    print_info "4. cleanup-website.sh - Clean up AWS resources"
-    print_info "5. cleanup-with-credentials.sh - Cleanup with inline credentials"
-    echo
-    
-    print_title "🏗️ What Gets Created:"
-    echo
-    print_info "• S3 bucket for website hosting"
-    print_info "• S3 bucket for www redirect"
-    print_info "• CloudFront distribution (global CDN)"
-    print_info "• Route53 hosted zone (DNS)"
-    print_info "• SSL certificate (free, auto-renewing)"
-    print_info "• All necessary IAM policies and roles"
-    echo
-    
-    print_title "💰 Estimated Monthly Cost:"
-    echo
-    print_info "• Route53 Hosted Zone: $0.50"
-    print_info "• CloudFront: $0.085/GB + $0.0075/10k requests"
-    print_info "• S3 Storage: $0.023/GB"
-    print_info "• SSL Certificate: FREE"
-    print_info "• Total for small sites: $1-5/month"
-    echo
-    
-    print_title "🔧 Prerequisites:"
-    echo
-    print_info "• AWS CLI installed and configured"
-    print_info "• jq command-line tool"
-    print_info "• Python 3 + boto3 (for Python scripts)"
-    print_info "• Valid domain name"
-    echo
-    
-    print_title "📖 Full Documentation:"
-    echo
-    print_info "Check README.md for complete instructions"
-    print_info "GitHub: https://github.com/Akramovic1/aws-website-quick-deployer"
-    echo
-    
-    echo -n -e "${CYAN}Press Enter to continue...${NC}"
-    read
-}
+### Interactive CLI Menu
 
-# Main function
-main() {
-    # Check if we're in the right directory
-    if [ ! -f "deploy-website.sh" ] || [ ! -f "website-template.yaml" ]; then
-        print_error "Required files not found in current directory"
-        print_info "Make sure you're running this from the aws-website-quick-deployer directory"
-        exit 1
-    fi
-    
-    # Make sure scripts are executable
-    chmod +x *.sh 2>/dev/null || true
-    
-    while true; do
-        show_main_menu
-        
-        echo -n -e "${CYAN}Enter your choice (0-9): ${NC}"
-        read choice
-        
-        case $choice in
-            1)
-                standard_deployment
-                ;;
-            2)
-                deployment_with_credentials
-                ;;
-            3)
-                python_deployment
-                ;;
-            4)
-                standard_cleanup
-                ;;
-            5)
-                cleanup_with_credentials
-                ;;
-            6)
-                python_cleanup
-                ;;
-            7)
-                check_status
-                ;;
-            8)
-                check_prerequisites
-                ;;
-            9)
-                show_documentation
-                ;;
-            0)
-                clear
-                print_success "Thank you for using AWS Static Website Deployer!"
-                print_info "Visit https://github.com/Akramovic1/aws-website-quick-deployer for updates"
-                echo
-                exit 0
-                ;;
-            *)
-                print_error "Invalid choice. Please select 0-9."
-                sleep 2
-                ;;
-        esac
-    done
-}
+```
+╔══════════════════════════════════════════════════════════════╗
+║            AWS Static Website Deployer Control              ║
+╚══════════════════════════════════════════════════════════════╝
 
-# Run main function
-main "$@"
+                    Choose Your Deployment Method:
+
+1. 🚀 Standard Deployment (Bash Script)
+2. 🔑 Deploy with Credentials (Inline)
+3. 🐍 Python Deployment (Full Featured)
+
+                      Management Options:
+
+4. 🗑️ Cleanup Resources (Standard)
+5. 🔑🗑️ Cleanup with Credentials
+6. 🐍🗑️ Python Cleanup
+7. 🐍ℹ️ Check Deployment Status
+
+                         Utilities:
+
+8. ⚙️ Prerequisites Check
+9. ℹ️ View Documentation
+0. ✅ Exit
+```
+
+### Command Line Usage
+
+#### Standard Deployment (Using AWS CLI Profile)
+```bash
+./deploy-website.sh example.com
+./deploy-website.sh example.com /path/to/website/folder
+```
+
+#### Deployment with Inline Credentials
+```bash
+./deploy-with-credentials.sh ACCESS_KEY SECRET_KEY example.com /path/to/website us-east-1
+```
+
+#### Python Deployment (Advanced Features)
+```bash
+# Deploy with existing website folder
+python3 aws-website-deployer.py deploy example.com --website-folder /path/to/site --region us-east-1
+
+# Deploy with auto-generated sample site
+python3 aws-website-deployer.py deploy example.com --region us-east-1
+
+# Check deployment status
+python3 aws-website-deployer.py status example.com --region us-east-1
+
+# Cleanup all resources
+python3 aws-website-deployer.py cleanup example.com --region us-east-1
+```
+
+## 🛠️ Deployment Methods
+
+### 1. Standard Deployment
+- **Best for:** Users with AWS CLI already configured
+- **Security:** Uses your existing AWS profile
+- **Features:** Full automation, sample site generation
+
+### 2. Credentials-Based Deployment
+- **Best for:** CI/CD pipelines, automated environments
+- **Security:** ⚠️ Credentials passed as arguments (use carefully)
+- **Features:** Self-contained, no AWS CLI config needed
+
+### 3. Python Deployment
+- **Best for:** Advanced users, programmatic integration
+- **Requirements:** Python 3 + boto3
+- **Features:** Status monitoring, detailed logging, error handling
+
+## 📁 Project Structure
+
+```
+aws-website-quick-deployer/
+├── main-deployer.sh              # Interactive main control script
+├── deploy-website.sh             # Standard bash deployment
+├── deploy-with-credentials.sh    # Deployment with inline credentials
+├── cleanup-website.sh            # Resource cleanup (standard)
+├── cleanup-with-credentials.sh   # Cleanup with inline credentials
+├── aws-website-deployer.py       # Python deployment tool
+├── website-template.yaml         # CloudFormation template
+└── README.md                     # This documentation
+```
+
+## ⚙️ Configuration
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `AWS_REGION` | Target AWS region | `us-east-1` |
+| `AWS_PROFILE` | AWS CLI profile to use | `default` |
+
+### AWS Permissions Required
+
+The tool requires the following AWS permissions:
+- S3: Bucket creation, object management, static website hosting
+- CloudFront: Distribution creation and management
+- Route53: Hosted zone and record management
+- Certificate Manager: Certificate request and validation
+- IAM: Role and policy management
+
+## 🧹 Cleanup
+
+### Complete Resource Removal
+
+**⚠️ WARNING: Cleanup permanently deletes ALL AWS resources for the specified domain**
+
+```bash
+# Interactive cleanup (recommended)
+./main-deployer.sh
+# Choose option 4, 5, or 6
+
+# Direct cleanup
+./cleanup-website.sh example.com
+
+# Python cleanup with status
+python3 aws-website-deployer.py cleanup example.com --region us-east-1
+```
+
+### Safety Features
+- Double confirmation required (`DELETE` must be typed)
+- Lists all resources before deletion
+- Graceful handling of dependencies
+- Rollback on partial failures
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+**AWS CLI Not Configured**
+```bash
+aws configure
+# Enter your Access Key ID, Secret Key, Region, and Output format
+```
+
+**Domain Already Exists in Route53**
+```bash
+# Check existing hosted zones
+aws route53 list-hosted-zones
+# Cleanup existing resources first
+./cleanup-website.sh your-domain.com
+```
+
+**Python Dependencies Missing**
+```bash
+pip3 install boto3
+```
+
+**Permission Denied Errors**
+```bash
+# Make scripts executable
+chmod +x *.sh
+```
+
+### Validation Checks
+
+The tool includes comprehensive validation for:
+- Domain name format
+- AWS credential format
+- Directory existence
+- Prerequisites installation
+- AWS service availability
+
+## 🔒 Security Considerations
+
+- **Credentials**: Never commit AWS credentials to version control
+- **IAM Policies**: Tool creates minimal required permissions only
+- **SSL/TLS**: Automatic HTTPS enforcement via CloudFront
+- **Access Logs**: Optional S3 access logging available
+- **Environment Isolation**: Separate resources per domain
+
+## 🌟 Advanced Features
+
+### Custom SSL Certificates
+```bash
+# The tool automatically requests and validates SSL certificates
+# No manual intervention required for domains you control
+```
+
+### Multi-Region Deployment
+```bash
+# Deploy to different regions
+python3 aws-website-deployer.py deploy example.com --region eu-west-1
+```
+
+### Status Monitoring
+```bash
+# Comprehensive status check
+python3 aws-website-deployer.py status example.com --region us-east-1
+```
+
+## 📈 Monitoring & Logs
+
+### CloudWatch Integration
+- CloudFront access logs
+- S3 request metrics
+- Certificate renewal notifications
+- Lambda edge function logs (if used)
+
+### Health Checks
+- DNS resolution verification
+- SSL certificate validation
+- CloudFront distribution status
+- S3 bucket accessibility
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
+
+### Development Setup
+```bash
+git clone https://github.com/Akramovic1/aws-website-quick-deployer.git
+cd aws-website-quick-deployer
+chmod +x *.sh
+```
+
+### Testing
+```bash
+# Run with a test domain
+./deploy-website.sh test-domain.example.com
+```
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## ⭐ Support
+
+- **Issues**: [GitHub Issues](https://github.com/Akramovic1/aws-website-quick-deployer/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/Akramovic1/aws-website-quick-deployer/discussions)
+- **Documentation**: [Wiki](https://github.com/Akramovic1/aws-website-quick-deployer/wiki)
+
+## 🎯 Roadmap
+
+- [ ] Terraform deployment option
+- [ ] Multi-site management dashboard
+- [ ] Automated backup and restore
+- [ ] Integration with popular static site generators
+- [ ] Custom domain SSL for non-Route53 domains
+- [ ] Blue-green deployment support
+
+## 💡 Use Cases
+
+### Perfect For:
+- **Personal websites** and portfolios
+- **Small business** landing pages
+- **Documentation sites** and blogs
+- **MVP applications** and prototypes
+- **Marketing campaigns** and landing pages
+
+### Not Suitable For:
+- Dynamic applications requiring server-side processing
+- Database-driven websites
+- Applications requiring persistent sessions
+- High-traffic enterprise applications
+
+---
+
+**🚀 Ready to deploy? Run `./main-deployer.sh` and get your website online in minutes!**
+
+---
+
+Made with ❤️ by [Akramovic1](https://github.com/Akramovic1) | ⭐ Star this repo if you find it useful!
