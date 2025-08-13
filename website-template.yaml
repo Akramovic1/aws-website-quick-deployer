@@ -63,7 +63,7 @@ Resources:
             Id: S3Origin
             S3OriginConfig:
               OriginAccessIdentity: ''
-            OriginAccessControlId: !GetRef OriginAccessControl
+            OriginAccessControlId: !Ref OriginAccessControl
         Enabled: true
         HttpVersion: http2
         DefaultRootObject: index.html

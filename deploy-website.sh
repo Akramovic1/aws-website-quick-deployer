@@ -89,6 +89,44 @@ deploy_stack() {
     
     print_header "Deploying AWS Infrastructure for $domain..."
     
+    # First, create just the Route53 hosted zone to get nameservers
+    print_info "Creating Route53 hosted zone..."
+    local hosted_zone_id=$(aws route53 create-hosted-zone \
+        --name "$domain" \
+        --caller-reference "$(date +%s)-$domain" \
+        --query 'HostedZone.Id' \
+        --output text 2>/dev/null || echo "")
+    
+    # If hosted zone creation failed, it might already exist
+    if [ -z "$hosted_zone_id" ]; then
+        print_info "Hosted zone might already exist, checking..."
+        hosted_zone_id=$(aws route53 list-hosted-zones \
+            --query "HostedZones[?Name=='$domain.'].Id" \
+            --output text)
+    fi
+    
+    if [ ! -z "$hosted_zone_id" ]; then
+        # Get and display nameservers immediately
+        print_info "Getting nameservers..."
+        local name_servers=$(aws route53 get-hosted-zone \
+            --id "$hosted_zone_id" \
+            --query 'DelegationSet.NameServers' \
+            --output text)
+        
+        echo
+        echo -e "${YELLOW}${CLIPBOARD} NAME SERVERS (Add these to your domain registrar NOW):${NC}"
+        echo -e "${RED}⚠️  ADD THESE TO YOUR DOMAIN REGISTRAR BEFORE CONTINUING!${NC}"
+        counter=1
+        for ns in $name_servers; do
+            echo "   $counter. $ns"
+            ((counter++))
+        done
+        echo
+        print_warning "Go to your domain registrar's DNS settings and replace nameservers with the above"
+        print_warning "Then press Enter to continue with SSL certificate creation..."
+        read -p "Press Enter after updating nameservers in your domain registrar: "
+    fi
+    
     # Deploy CloudFormation stack
     aws cloudformation deploy \
         --template-file website-template.yaml \
@@ -312,7 +350,7 @@ main() {
     print_header "🎉 Deployment Complete!"
     echo
     print_info "Next steps:"
-    echo "1. Add the name servers to your domain registrar"
+    echo "1. Nameservers should already be added to your domain registrar"
     echo "2. Wait 24-48 hours for DNS propagation"
     echo "3. Visit https://$domain to see your website"
     echo
