@@ -171,42 +171,65 @@ deploy_phase2() {
     
     print_header "Phase 2: Creating complete infrastructure with SSL..."
     
-    # Deploy Phase 2 CloudFormation stack with retry logic
-    local max_retries=3
-    local retry_count=0
-    local deployment_success=false
+    # Check if Phase 2 stack already exists
+    local existing_phase2=$(aws cloudformation describe-stacks \
+        --stack-name "$stack_name" \
+        --region us-east-1 \
+        --query 'Stacks[0].StackStatus' \
+        --output text 2>/dev/null || echo "NOT_FOUND")
     
-    while [ $retry_count -lt $max_retries ] && [ "$deployment_success" = false ]; do
-        if [ $retry_count -gt 0 ]; then
-            print_info "Retry attempt $retry_count of $max_retries..."
-            print_info "Waiting 2 minutes for DNS propagation before retry..."
-            sleep 120
-        fi
-        
-        print_info "Deploying Phase 2 infrastructure..."
-        
-        if aws cloudformation deploy \
-            --template-file website-template-phase2.yaml \
+    if [ "$existing_phase2" = "CREATE_IN_PROGRESS" ]; then
+        print_info "Phase 2 stack is already being created, waiting for completion..."
+        aws cloudformation wait stack-create-complete \
             --stack-name "$stack_name" \
-            --parameter-overrides DomainName="$domain" Phase1StackName="$phase1_stack_name" \
-            --capabilities CAPABILITY_IAM \
-            --region us-east-1; then
-            deployment_success=true
+            --region us-east-1
+        if [ $? -eq 0 ]; then
             print_status "Infrastructure deployed successfully"
         else
-            ((retry_count++))
-            if [ $retry_count -lt $max_retries ]; then
-                print_warning "Phase 2 deployment failed, likely due to DNS propagation delay"
-                print_info "SSL certificate validation may still be in progress..."
-            else
-                print_error "Phase 2 deployment failed after $max_retries attempts"
-                print_info "This is likely due to DNS propagation delays. You can:"
-                print_info "1. Wait 30 minutes and run the deployment again"
-                print_info "2. Check that nameservers are correctly set at your registrar"
-                exit 1
-            fi
+            print_error "Phase 2 deployment failed during wait"
+            exit 1
         fi
-    done
+    elif [ "$existing_phase2" = "CREATE_COMPLETE" ]; then
+        print_info "Phase 2 stack already exists and is complete"
+        print_status "Infrastructure already deployed successfully"
+    else
+        # Deploy Phase 2 CloudFormation stack with retry logic
+        local max_retries=3
+        local retry_count=0
+        local deployment_success=false
+        
+        while [ $retry_count -lt $max_retries ] && [ "$deployment_success" = false ]; do
+            if [ $retry_count -gt 0 ]; then
+                print_info "Retry attempt $retry_count of $max_retries..."
+                print_info "Waiting 2 minutes for DNS propagation before retry..."
+                sleep 120
+            fi
+            
+            print_info "Deploying Phase 2 infrastructure..."
+            
+            if aws cloudformation deploy \
+                --template-file website-template-phase2.yaml \
+                --stack-name "$stack_name" \
+                --parameter-overrides DomainName="$domain" Phase1StackName="$phase1_stack_name" \
+                --capabilities CAPABILITY_IAM \
+                --region us-east-1; then
+                deployment_success=true
+                print_status "Infrastructure deployed successfully"
+            else
+                ((retry_count++))
+                if [ $retry_count -lt $max_retries ]; then
+                    print_warning "Phase 2 deployment failed, likely due to DNS propagation delay"
+                    print_info "SSL certificate validation may still be in progress..."
+                else
+                    print_error "Phase 2 deployment failed after $max_retries attempts"
+                    print_info "This is likely due to DNS propagation delays. You can:"
+                    print_info "1. Wait 30 minutes and run the deployment again"
+                    print_info "2. Check that nameservers are correctly set at your registrar"
+                    exit 1
+                fi
+            fi
+        done
+    fi
     
     # Get stack outputs
     print_info "Retrieving stack information..."
@@ -258,7 +281,10 @@ deploy_stack() {
     print_header "Deploying AWS Infrastructure for $domain..."
     
     # Phase 1: Create hosted zone and get nameservers
-    local phase1_stack_name=$(deploy_phase1 "$domain")
+    deploy_phase1 "$domain"
+    
+    # Get the clean stack name directly
+    local phase1_stack_name="website-$(echo $domain | tr '.' '-')-phase1"
     
     # Phase 2: Create complete infrastructure with SSL
     deploy_phase2 "$domain" "$phase1_stack_name"
