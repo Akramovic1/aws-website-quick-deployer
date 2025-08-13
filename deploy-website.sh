@@ -82,65 +82,131 @@ validate_domain() {
     fi
 }
 
-# Function to deploy CloudFormation stack
-deploy_stack() {
+# Function to deploy Phase 1 (Route53 hosted zone)
+deploy_phase1() {
     local domain=$1
-    local stack_name="website-$(echo $domain | tr '.' '-')"
+    local stack_name="website-$(echo $domain | tr '.' '-')-phase1"
     
-    print_header "Deploying AWS Infrastructure for $domain..."
+    print_header "Phase 1: Creating DNS hosted zone for $domain..."
     
-    # First, create just the Route53 hosted zone to get nameservers
-    print_info "Creating Route53 hosted zone..."
-    local hosted_zone_id=$(aws route53 create-hosted-zone \
-        --name "$domain" \
-        --caller-reference "$(date +%s)-$domain" \
-        --query 'HostedZone.Id' \
-        --output text 2>/dev/null || echo "")
-    
-    # If hosted zone creation failed, it might already exist
-    if [ -z "$hosted_zone_id" ]; then
-        print_info "Hosted zone might already exist, checking..."
-        hosted_zone_id=$(aws route53 list-hosted-zones \
-            --query "HostedZones[?Name=='$domain.'].Id" \
-            --output text)
-    fi
-    
-    if [ ! -z "$hosted_zone_id" ]; then
-        # Get and display nameservers immediately
-        print_info "Getting nameservers..."
-        local name_servers=$(aws route53 get-hosted-zone \
-            --id "$hosted_zone_id" \
-            --query 'DelegationSet.NameServers' \
-            --output text)
-        
-        echo
-        echo -e "${YELLOW}${CLIPBOARD} NAME SERVERS (Add these to your domain registrar NOW):${NC}"
-        echo -e "${RED}⚠️  ADD THESE TO YOUR DOMAIN REGISTRAR BEFORE CONTINUING!${NC}"
-        counter=1
-        for ns in $name_servers; do
-            echo "   $counter. $ns"
-            ((counter++))
-        done
-        echo
-        print_warning "Go to your domain registrar's DNS settings and replace nameservers with the above"
-        print_warning "Then press Enter to continue with SSL certificate creation..."
-        read -p "Press Enter after updating nameservers in your domain registrar: "
-    fi
-    
-    # Deploy CloudFormation stack
-    aws cloudformation deploy \
-        --template-file website-template.yaml \
+    # Check if Phase 1 stack already exists
+    local existing_stack=$(aws cloudformation describe-stacks \
         --stack-name "$stack_name" \
-        --parameter-overrides DomainName="$domain" \
-        --capabilities CAPABILITY_IAM \
-        --region us-east-1
+        --region us-east-1 \
+        --query 'Stacks[0].StackStatus' \
+        --output text 2>/dev/null || echo "NOT_FOUND")
     
-    if [ $? -eq 0 ]; then
-        print_status "Infrastructure deployed successfully"
+    if [ "$existing_stack" != "NOT_FOUND" ] && [ "$existing_stack" != "DELETE_COMPLETE" ]; then
+        print_info "Found existing Phase 1 stack, retrieving nameservers..."
     else
-        print_error "Infrastructure deployment failed"
-        exit 1
+        # Deploy Phase 1 CloudFormation stack
+        aws cloudformation deploy \
+            --template-file website-template-phase1.yaml \
+            --stack-name "$stack_name" \
+            --parameter-overrides DomainName="$domain" \
+            --region us-east-1
+        
+        if [ $? -ne 0 ]; then
+            print_error "Phase 1 deployment failed"
+            exit 1
+        fi
+        print_status "Phase 1 deployment complete"
     fi
+    
+    # Get nameservers
+    local name_servers=$(aws cloudformation describe-stacks \
+        --stack-name "$stack_name" \
+        --region us-east-1 \
+        --query 'Stacks[0].Outputs[?OutputKey==`NameServers`].OutputValue' \
+        --output text)
+    
+    # Display name servers prominently to stderr so it doesn't interfere with return value
+    >&2 echo
+    >&2 echo -e "${YELLOW}╔═══════════════════════════════════════════════════════════════╗${NC}"
+    >&2 echo -e "${YELLOW}║                  IMPORTANT: NAMESERVERS                       ║${NC}"
+    >&2 echo -e "${YELLOW}╚═══════════════════════════════════════════════════════════════╝${NC}"
+    >&2 echo
+    >&2 echo -e "${YELLOW}${CLIPBOARD} Add these nameservers to your domain registrar (GoDaddy, etc.):${NC}"
+    >&2 echo
+    IFS=', ' read -ra NS_ARRAY <<< "$name_servers"
+    counter=1
+    for ns in "${NS_ARRAY[@]}"; do
+        >&2 echo -e "${GREEN}   $counter. $ns${NC}"
+        ((counter++))
+    done
+    >&2 echo
+    >&2 echo -e "${YELLOW}Steps to update nameservers:${NC}"
+    >&2 echo -e "${BLUE}   1. Log into your domain registrar (GoDaddy, etc.)${NC}"
+    >&2 echo -e "${BLUE}   2. Find DNS/Nameserver settings for $domain${NC}"
+    >&2 echo -e "${BLUE}   3. Replace existing nameservers with the 4 above${NC}"
+    >&2 echo -e "${BLUE}   4. Wait 5-15 minutes for DNS propagation${NC}"
+    >&2 echo
+    >&2 echo -e "${RED}⚠️  SSL certificate creation will FAIL if nameservers aren't updated!${NC}"
+    >&2 echo
+    
+    # Wait for user confirmation
+    >&2 echo -e "${CYAN}Press Enter ONLY after you've updated nameservers at your registrar...${NC}"
+    read -p ""
+    
+    # Simple DNS propagation check (non-blocking)
+    >&2 print_info "Checking DNS propagation..."
+    local first_ns=$(echo "$name_servers" | cut -d',' -f1 | xargs)
+    
+    # Quick check with timeout - don't get stuck
+    if timeout 10 nslookup "$domain" "$first_ns" >/dev/null 2>&1; then
+        >&2 print_status "DNS propagation verified"
+    else
+        >&2 print_warning "DNS propagation not yet verified, but continuing anyway"
+        >&2 print_info "SSL certificate will validate automatically once DNS propagates"
+    fi
+    
+    echo "$stack_name"  # Return stack name for Phase 2
+}
+
+# Function to deploy Phase 2 (Complete infrastructure with SSL)
+deploy_phase2() {
+    local domain=$1
+    local phase1_stack_name=$2
+    local stack_name="website-$(echo $domain | tr '.' '-')-phase2"
+    
+    print_header "Phase 2: Creating complete infrastructure with SSL..."
+    
+    # Deploy Phase 2 CloudFormation stack with retry logic
+    local max_retries=3
+    local retry_count=0
+    local deployment_success=false
+    
+    while [ $retry_count -lt $max_retries ] && [ "$deployment_success" = false ]; do
+        if [ $retry_count -gt 0 ]; then
+            print_info "Retry attempt $retry_count of $max_retries..."
+            print_info "Waiting 2 minutes for DNS propagation before retry..."
+            sleep 120
+        fi
+        
+        print_info "Deploying Phase 2 infrastructure..."
+        
+        if aws cloudformation deploy \
+            --template-file website-template-phase2.yaml \
+            --stack-name "$stack_name" \
+            --parameter-overrides DomainName="$domain" Phase1StackName="$phase1_stack_name" \
+            --capabilities CAPABILITY_IAM \
+            --region us-east-1; then
+            deployment_success=true
+            print_status "Infrastructure deployed successfully"
+        else
+            ((retry_count++))
+            if [ $retry_count -lt $max_retries ]; then
+                print_warning "Phase 2 deployment failed, likely due to DNS propagation delay"
+                print_info "SSL certificate validation may still be in progress..."
+            else
+                print_error "Phase 2 deployment failed after $max_retries attempts"
+                print_info "This is likely due to DNS propagation delays. You can:"
+                print_info "1. Wait 30 minutes and run the deployment again"
+                print_info "2. Check that nameservers are correctly set at your registrar"
+                exit 1
+            fi
+        fi
+    done
     
     # Get stack outputs
     print_info "Retrieving stack information..."
@@ -155,7 +221,13 @@ deploy_stack() {
     local website_url=$(echo "$outputs" | jq -r '.[] | select(.OutputKey=="WebsiteURL") | .OutputValue')
     local bucket_name=$(echo "$outputs" | jq -r '.[] | select(.OutputKey=="S3BucketSecureURL") | .OutputValue' | sed 's|https://||' | sed 's|.s3.amazonaws.com||')
     local cloudfront_id=$(echo "$outputs" | jq -r '.[] | select(.OutputKey=="CloudFrontDistributionId") | .OutputValue')
-    local name_servers=$(echo "$outputs" | jq -r '.[] | select(.OutputKey=="NameServers") | .OutputValue')
+    
+    # Get nameservers from Phase 1
+    local name_servers=$(aws cloudformation describe-stacks \
+        --stack-name "$phase1_stack_name" \
+        --region us-east-1 \
+        --query 'Stacks[0].Outputs[?OutputKey==`NameServers`].OutputValue' \
+        --output text)
     
     # Display information
     echo
@@ -166,8 +238,8 @@ deploy_stack() {
     print_info "CloudFront Distribution ID: $cloudfront_id"
     echo
     
-    # Display name servers
-    echo -e "${YELLOW}${CLIPBOARD} NAME SERVERS (Add these to your domain registrar):${NC}"
+    # Display name servers again for reference
+    echo -e "${YELLOW}${CLIPBOARD} Your nameservers (should already be set):${NC}"
     IFS=', ' read -ra NS_ARRAY <<< "$name_servers"
     counter=1
     for ns in "${NS_ARRAY[@]}"; do
@@ -176,7 +248,20 @@ deploy_stack() {
     done
     echo
     
-    print_warning "DNS propagation can take 24-48 hours"
+    return 0
+}
+
+# Function to deploy CloudFormation stack (combines both phases)
+deploy_stack() {
+    local domain=$1
+    
+    print_header "Deploying AWS Infrastructure for $domain..."
+    
+    # Phase 1: Create hosted zone and get nameservers
+    local phase1_stack_name=$(deploy_phase1 "$domain")
+    
+    # Phase 2: Create complete infrastructure with SSL
+    deploy_phase2 "$domain" "$phase1_stack_name"
     
     return 0
 }

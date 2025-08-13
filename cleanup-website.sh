@@ -89,36 +89,137 @@ empty_s3_buckets() {
     fi
 }
 
-# Function to delete CloudFormation stack
-delete_stack() {
+# Function to cleanup DNS records that might block hosted zone deletion
+cleanup_dns_records() {
+    local domain=$1
+    
+    print_info "Cleaning up DNS records that might block deletion..."
+    
+    # Find hosted zone for the domain
+    local hosted_zone_id=$(aws route53 list-hosted-zones-by-name \
+        --dns-name "$domain" \
+        --query 'HostedZones[?Name==`'$domain'.`].Id' \
+        --output text | cut -d'/' -f3)
+    
+    if [ -z "$hosted_zone_id" ]; then
+        print_info "No hosted zone found for $domain"
+        return
+    fi
+    
+    print_info "Found hosted zone: $hosted_zone_id"
+    
+    # Get all DNS records except NS and SOA (which are required and will be deleted with the zone)
+    local records=$(aws route53 list-resource-record-sets \
+        --hosted-zone-id "$hosted_zone_id" \
+        --query 'ResourceRecordSets[?Type!=`NS` && Type!=`SOA`]' \
+        --output json 2>/dev/null)
+    
+    if [ "$records" = "[]" ] || [ -z "$records" ]; then
+        print_info "No additional DNS records found to clean up"
+        return
+    fi
+    
+    # Delete each record
+    echo "$records" | jq -c '.[]' | while read -r record; do
+        local name=$(echo "$record" | jq -r '.Name')
+        local type=$(echo "$record" | jq -r '.Type')
+        
+        print_info "Deleting DNS record: $name ($type)"
+        
+        # Create change batch for deletion
+        local change_batch=$(echo "{\"Changes\":[{\"Action\":\"DELETE\",\"ResourceRecordSet\":$record}]}")
+        
+        # Delete the record
+        aws route53 change-resource-record-sets \
+            --hosted-zone-id "$hosted_zone_id" \
+            --change-batch "$change_batch" \
+            >/dev/null 2>&1 || print_warning "Failed to delete record $name"
+    done
+    
+    print_status "DNS cleanup completed"
+}
+
+# Function to delete CloudFormation stacks
+delete_stacks() {
     local domain=$1
     local stack_name="website-$(echo $domain | tr '.' '-')"
     
-    print_info "Checking if CloudFormation stack exists..."
+    print_info "Checking for CloudFormation stacks..."
     
+    # Delete Phase 2 stack first (if exists)
+    local phase2_stack="$stack_name-phase2"
+    if aws cloudformation describe-stacks --stack-name "$phase2_stack" --region us-east-1 &> /dev/null; then
+        print_info "Deleting Phase 2 stack: $phase2_stack"
+        
+        aws cloudformation delete-stack \
+            --stack-name "$phase2_stack" \
+            --region us-east-1
+        
+        print_info "Waiting for Phase 2 stack deletion..."
+        print_warning "This may take several minutes..."
+        
+        aws cloudformation wait stack-delete-complete \
+            --stack-name "$phase2_stack" \
+            --region us-east-1
+        
+        if [ $? -eq 0 ]; then
+            print_status "Phase 2 stack deleted successfully"
+        else
+            print_error "Phase 2 stack deletion failed or timed out"
+            print_info "Check AWS CloudFormation console for details"
+        fi
+    else
+        print_info "Phase 2 stack $phase2_stack does not exist"
+    fi
+    
+    # Delete Phase 1 stack (if exists)
+    local phase1_stack="$stack_name-phase1"
+    if aws cloudformation describe-stacks --stack-name "$phase1_stack" --region us-east-1 &> /dev/null; then
+        print_info "Deleting Phase 1 stack: $phase1_stack"
+        
+        aws cloudformation delete-stack \
+            --stack-name "$phase1_stack" \
+            --region us-east-1
+        
+        print_info "Waiting for Phase 1 stack deletion..."
+        
+        aws cloudformation wait stack-delete-complete \
+            --stack-name "$phase1_stack" \
+            --region us-east-1
+        
+        if [ $? -eq 0 ]; then
+            print_status "Phase 1 stack deleted successfully"
+        else
+            print_error "Phase 1 stack deletion failed or timed out"
+            print_info "Check AWS CloudFormation console for details"
+        fi
+    else
+        print_info "Phase 1 stack $phase1_stack does not exist"
+    fi
+    
+    # Also check for legacy single stack (backward compatibility)
     if aws cloudformation describe-stacks --stack-name "$stack_name" --region us-east-1 &> /dev/null; then
-        print_info "Deleting CloudFormation stack: $stack_name"
+        print_info "Found legacy single stack: $stack_name"
+        print_info "Deleting legacy stack..."
         
         aws cloudformation delete-stack \
             --stack-name "$stack_name" \
             --region us-east-1
         
-        print_info "Waiting for stack deletion to complete..."
-        print_warning "This may take several minutes..."
+        print_info "Waiting for legacy stack deletion..."
         
         aws cloudformation wait stack-delete-complete \
             --stack-name "$stack_name" \
             --region us-east-1
         
         if [ $? -eq 0 ]; then
-            print_status "Stack deleted successfully"
+            print_status "Legacy stack deleted successfully"
         else
-            print_error "Stack deletion failed or timed out"
+            print_error "Legacy stack deletion failed or timed out"
             print_info "Check AWS CloudFormation console for details"
-            exit 1
         fi
     else
-        print_info "CloudFormation stack $stack_name does not exist"
+        print_info "Legacy stack $stack_name does not exist"
     fi
 }
 
@@ -224,8 +325,11 @@ main() {
     # Empty S3 buckets first (required before stack deletion)
     empty_s3_buckets "$domain"
     
-    # Delete CloudFormation stack
-    delete_stack "$domain"
+    # Clean up Route53 DNS records that might block deletion
+    cleanup_dns_records "$domain"
+    
+    # Delete CloudFormation stacks
+    delete_stacks "$domain"
     
     # Check for remaining resources
     check_remaining_resources "$domain"
