@@ -1,0 +1,82 @@
+{
+  "widgets": [
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 0,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          ["AWS/CloudFront", "Requests", "DistributionId", "${DistributionId}"],
+          [".", "BytesDownloaded", ".", "."],
+          [".", "BytesUploaded", ".", "."]
+        ],
+        "period": 300,
+        "stat": "Sum",
+        "region": "us-east-1",
+        "title": "CloudFront Traffic",
+        "yAxis": {
+          "left": {
+            "min": 0
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 0,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          ["AWS/CloudFront", "4xxErrorRate", "DistributionId", "${DistributionId}"],
+          [".", "5xxErrorRate", ".", "."]
+        ],
+        "period": 300,
+        "stat": "Average",
+        "region": "us-east-1",
+        "title": "CloudFront Error Rates",
+        "yAxis": {
+          "left": {
+            "min": 0,
+            "max": 100
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 6,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          ["AWS/S3", "BucketSizeBytes", "BucketName", "${BucketName}", "StorageType", "StandardStorage"]
+        ],
+        "period": 86400,
+        "stat": "Average",
+        "region": "${Region}",
+        "title": "S3 Bucket Size"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 6,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          ["AWS/Route53", "QueryCount", "HostedZoneId", "${HostedZoneId}"]
+        ],
+        "period": 300,
+        "stat": "Sum",
+        "region": "us-east-1",
+        "title": "DNS Queries"
+      }
+    }
+  ]
+}
