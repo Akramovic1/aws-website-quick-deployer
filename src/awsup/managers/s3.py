@@ -21,36 +21,39 @@ class S3Manager(BaseAWSManager):
         self.bucket_name = config.domain
     
     def create_or_get_bucket(self) -> str:
-        """Create or get existing S3 bucket"""
+        """Create or get existing S3 bucket, always updating configuration"""
         try:
-            # Check if bucket exists
-            if self._bucket_exists():
-                self.logger.info(f"Using existing bucket: {self.bucket_name}")
-                # Update configuration
-                self._configure_bucket()
-                return self.bucket_name
+            bucket_exists = self._bucket_exists()
             
-            # Create new bucket
-            self.logger.info(f"Creating S3 bucket: {self.bucket_name}")
+            if bucket_exists:
+                self.logger.info(f"Found existing bucket: {self.bucket_name}")
+            else:
+                # Create new bucket
+                self.logger.info(f"Creating S3 bucket: {self.bucket_name}")
+                
+                def create_bucket():
+                    if self.config.region == 'us-east-1':
+                        return self.client.create_bucket(Bucket=self.bucket_name)
+                    else:
+                        return self.client.create_bucket(
+                            Bucket=self.bucket_name,
+                            CreateBucketConfiguration={
+                                'LocationConstraint': self.config.region
+                            }
+                        )
+                
+                self.retry_with_backoff(create_bucket)
+                self.logger.info(f"Created bucket: {self.bucket_name}")
             
-            def create_bucket():
-                if self.config.region == 'us-east-1':
-                    return self.client.create_bucket(Bucket=self.bucket_name)
-                else:
-                    return self.client.create_bucket(
-                        Bucket=self.bucket_name,
-                        CreateBucketConfiguration={
-                            'LocationConstraint': self.config.region
-                        }
-                    )
-            
-            self.retry_with_backoff(create_bucket)
-            
-            # Configure bucket settings
+            # Always configure bucket settings (for both new and existing)
+            self.logger.info("Updating bucket configuration...")
             self._configure_bucket()
             
-            # Add tags
+            # Always update tags
             self.add_tags()
+            
+            action = "created" if not bucket_exists else "updated"
+            self.logger.info(f"✅ Bucket {action} and configured successfully")
             
             return self.bucket_name
             
@@ -142,8 +145,9 @@ class S3Manager(BaseAWSManager):
             path_obj = Path(website_path)
             
             if path_obj.is_file():
-                # Single file upload
-                self._upload_single_file(path_obj, path_obj.name)
+                # Single file upload - rename default template to index.html
+                s3_key = "index.html" if path_obj.name == "default-index.html" else path_obj.name
+                self._upload_single_file(path_obj, s3_key)
                 uploaded_count = 1
             else:
                 # Directory upload

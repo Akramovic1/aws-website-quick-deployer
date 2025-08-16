@@ -68,12 +68,16 @@ class ACMManager(BaseAWSManager):
             raise
     
     def get_existing_certificate(self) -> Optional[str]:
-        """Check for existing valid certificate covering our domains"""
+        """Check for existing certificate covering our domains (any status)"""
         try:
-            def list_certs():
-                return self.client.list_certificates(CertificateStatuses=['ISSUED'])
+            # Get all certificates (no status filter)
+            def list_all_certs():
+                return self.client.list_certificates()
             
-            response = self.retry_with_backoff(list_certs)
+            response = self.retry_with_backoff(list_all_certs)
+            
+            # Look for certificates that cover our domains
+            matching_certs = []
             
             for cert in response.get('CertificateSummaryList', []):
                 def describe_cert():
@@ -85,12 +89,33 @@ class ACMManager(BaseAWSManager):
                 # Check if certificate covers our domains
                 domains = [cert_info['DomainName']] + cert_info.get('SubjectAlternativeNames', [])
                 
-                if (self.domain in domains and 
-                    self.www_domain in domains and 
-                    cert_info['Status'] == 'ISSUED'):
-                    return cert['CertificateArn']
+                if (self.domain in domains and self.www_domain in domains):
+                    matching_certs.append({
+                        'arn': cert['CertificateArn'],
+                        'status': cert_info['Status'],
+                        'domains': domains
+                    })
             
-            return None
+            if not matching_certs:
+                return None
+            
+            # Prioritize certificates by status: ISSUED > PENDING_VALIDATION > others
+            status_priority = {
+                'ISSUED': 1,
+                'PENDING_VALIDATION': 2,
+                'VALIDATION_TIMED_OUT': 3,
+                'FAILED': 4,
+                'EXPIRED': 5,
+                'REVOKED': 6
+            }
+            
+            # Sort by priority (lower number = higher priority)
+            matching_certs.sort(key=lambda cert: status_priority.get(cert['status'], 99))
+            
+            best_cert = matching_certs[0]
+            self.logger.info(f"Found existing certificate for {self.domain} with status: {best_cert['status']}")
+            
+            return best_cert['arn']
             
         except Exception as e:
             self.logger.warning(f"Error checking existing certificates: {e}")
@@ -160,10 +185,28 @@ class ACMManager(BaseAWSManager):
             )
             
             self.logger.info("Certificate issued successfully!")
+            return True
             
         except Exception as e:
             self.logger.warning(f"Certificate validation timeout or error: {e}")
-            self.logger.info("Certificate validation may still be in progress...")
+            # Check if certificate is actually valid despite timeout
+            try:
+                response = self.client.describe_certificate(CertificateArn=cert_arn)
+                status = response['Certificate']['Status']
+                
+                if status == 'ISSUED':
+                    self.logger.info("Certificate is actually valid despite timeout!")
+                    return True
+                elif status == 'PENDING_VALIDATION':
+                    self.logger.error("Certificate still pending validation - cannot proceed")
+                    return False
+                else:
+                    self.logger.error(f"Certificate in unexpected status: {status}")
+                    return False
+                    
+            except Exception as check_error:
+                self.logger.error(f"Failed to check certificate status: {check_error}")
+                return False
     
     def delete_certificate(self, cert_arn: str):
         """Delete ACM certificate"""

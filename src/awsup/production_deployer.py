@@ -123,6 +123,12 @@ class CompleteProductionDeployer:
                 task1 = progress.add_task("Setting up SSL certificate...", total=None)
                 cert_arn = self.acm_manager.request_or_get_certificate(self.route53_manager)
                 results['certificate_arn'] = cert_arn
+                
+                # Verify certificate is actually ready
+                if not self.acm_manager.wait_for_certificate_validation(cert_arn):
+                    progress.update(task1, description="❌ SSL certificate validation failed")
+                    raise ValueError("SSL certificate validation failed - cannot proceed with CloudFront setup")
+                
                 progress.update(task1, description="✅ SSL certificate ready")
                 
                 # Step 2: S3 Bucket

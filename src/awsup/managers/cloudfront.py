@@ -178,26 +178,56 @@ class CloudFrontManager(BaseAWSManager):
         }
     
     def get_existing_distribution(self) -> Optional[Dict]:
-        """Check for existing CloudFront distribution"""
+        """Check for existing CloudFront distribution (any status)"""
         try:
             def list_distributions():
                 return self.client.list_distributions()
             
             response = self.retry_with_backoff(list_distributions)
             
+            # Look for distributions that serve our domains
+            matching_distributions = []
+            
             for dist in response.get('DistributionList', {}).get('Items', []):
                 aliases = dist.get('Aliases', {}).get('Items', [])
+                
                 if self.domain in aliases or self.www_domain in aliases:
-                    return dist
+                    matching_distributions.append({
+                        'distribution': dist,
+                        'status': dist['Status'],
+                        'enabled': dist['Enabled']
+                    })
             
-            return None
+            if not matching_distributions:
+                return None
+            
+            # Prioritize distributions: Deployed+Enabled > Deployed+Disabled > InProgress > others
+            def get_priority(dist_info):
+                status = dist_info['status']
+                enabled = dist_info['enabled']
+                
+                if status == 'Deployed' and enabled:
+                    return 1  # Best option
+                elif status == 'Deployed' and not enabled:
+                    return 2  # Good option, just needs enabling
+                elif status == 'InProgress':
+                    return 3  # Acceptable, wait for completion
+                else:
+                    return 4  # Other statuses
+            
+            # Sort by priority and return the best match
+            matching_distributions.sort(key=get_priority)
+            best_match = matching_distributions[0]
+            
+            self.logger.info(f"Found existing distribution for {self.domain} with status: {best_match['status']}")
+            return best_match['distribution']
             
         except Exception as e:
             self.logger.warning(f"Error checking distributions: {e}")
             return None
     
     def update_distribution(self, distribution_id: str, bucket_name: str, cert_arn: str):
-        """Update existing CloudFront distribution"""
+        """Update existing CloudFront distribution with latest configuration"""
         try:
             # Get current configuration
             def get_config():
@@ -209,17 +239,26 @@ class CloudFrontManager(BaseAWSManager):
             
             # Track if any updates needed
             updated = False
+            changes = []
+            
+            # Ensure distribution is enabled
+            if not config.get('Enabled', True):
+                config['Enabled'] = True
+                updated = True
+                changes.append("enabled distribution")
             
             # Update certificate if different
-            if config['ViewerCertificate'].get('ACMCertificateArn') != cert_arn:
+            current_cert = config['ViewerCertificate'].get('ACMCertificateArn')
+            if current_cert != cert_arn:
                 config['ViewerCertificate'] = {
                     'ACMCertificateArn': cert_arn,
                     'SSLSupportMethod': 'sni-only',
                     'MinimumProtocolVersion': 'TLSv1.2_2021'
                 }
                 updated = True
+                changes.append("updated SSL certificate")
             
-            # Update aliases if missing
+            # Update aliases if missing or incomplete
             current_aliases = config.get('Aliases', {}).get('Items', [])
             if self.domain not in current_aliases or self.www_domain not in current_aliases:
                 config['Aliases'] = {
@@ -227,6 +266,29 @@ class CloudFrontManager(BaseAWSManager):
                     'Items': [self.domain, self.www_domain]
                 }
                 updated = True
+                changes.append("updated domain aliases")
+            
+            # Update origin configuration
+            current_origin = config['Origins']['Items'][0] if config['Origins']['Items'] else {}
+            expected_origin_domain = f'{bucket_name}.s3.amazonaws.com'
+            
+            if current_origin.get('DomainName') != expected_origin_domain:
+                config['Origins']['Items'][0]['DomainName'] = expected_origin_domain
+                config['Origins']['Items'][0]['Id'] = f's3-{bucket_name}'
+                config['DefaultCacheBehavior']['TargetOriginId'] = f's3-{bucket_name}'
+                updated = True
+                changes.append("updated S3 origin")
+            
+            # Ensure modern settings
+            if config.get('HttpVersion') != self.config.http_version:
+                config['HttpVersion'] = self.config.http_version
+                updated = True
+                changes.append("updated HTTP version")
+            
+            if config.get('IsIPV6Enabled') != self.config.enable_ipv6:
+                config['IsIPV6Enabled'] = self.config.enable_ipv6
+                updated = True
+                changes.append("updated IPv6 setting")
             
             # Update if changes detected
             if updated:
@@ -238,12 +300,13 @@ class CloudFrontManager(BaseAWSManager):
                     )
                 
                 self.retry_with_backoff(update_dist)
-                self.logger.info("Updated distribution configuration")
+                self.logger.info(f"✅ Updated distribution: {', '.join(changes)}")
             else:
-                self.logger.info("Distribution configuration is up to date")
+                self.logger.info("Distribution configuration is already up to date")
                 
         except Exception as e:
             self.logger.warning(f"Error updating distribution: {e}")
+            raise
     
     def create_invalidation(self, distribution_id: str, paths: List[str] = None) -> str:
         """Create CloudFront cache invalidation"""
