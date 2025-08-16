@@ -1,39 +1,32 @@
-# AWS Website Quick Deployer
+# 🚀 AWSUP - Lightning-Fast AWS Website Deployment
 
-A production-grade Python toolkit for deploying static websites to AWS using S3, CloudFront, Route53, and ACM. Now featuring modular architecture, comprehensive validation, and Infrastructure as Code support.
+Production-grade CLI tool for deploying static websites to AWS using S3, CloudFront, Route53, and ACM. Zero configuration, maximum automation.
 
-## 🆕 Version 2.0 - Production Grade
-
-### New Features
-- **Modular Architecture** - Separated concerns with dedicated service managers
-- **Configuration Management** - Environment-based configs with validation
-- **Enhanced Security** - Input validation, secret detection, secure defaults
-- **Infrastructure as Code** - AWS CDK templates included
-- **Rich CLI Experience** - Beautiful terminal UI with progress indicators
-- **Comprehensive Testing** - Unit tests with pytest framework
-- **Monitoring Ready** - CloudWatch dashboard templates
-
-## 🚀 Quick Start
-
-### Production Deployment
+## ⚡ Super Quick Start
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Install globally
+pip install awsup
 
-# Initialize configuration
-python deploy_production.py init yourdomain.com --region us-east-1
+# Deploy your website instantly
+cd /path/to/your/website
+awsup deploy yourdomain.com --website-path .
 
-# Deploy with validation and monitoring
-python deploy_production.py phase1 yourdomain.com
-python deploy_production.py phase2 yourdomain.com --website-path ./dist
-
-# OR: Complete deployment in one command
-python deploy_production.py deploy yourdomain.com --website-path ./dist
-
-# Check status
-python deploy_production.py status yourdomain.com
+# Or deploy with default "Coming Soon" page
+awsup deploy yourdomain.com
 ```
+
+**That's it!** AWSUP handles all AWS infrastructure automatically.
+
+## ✨ Features
+
+- 🎯 **Zero Config** - Works out of the box
+- 🔒 **Secure by Default** - SSL, OAC, encryption enabled
+- ⚡ **Lightning Fast** - Global CloudFront CDN
+- 🛡️ **Production Ready** - Comprehensive validation & error handling
+- 🎨 **Beautiful CLI** - Rich terminal UI with progress bars
+- 🔄 **Smart State** - Resumes interrupted deployments
+- 🌍 **Global** - Works with any domain registrar
 
 ## Architecture Overview
 
@@ -79,38 +72,45 @@ Create an IAM policy with these permissions:
 }
 ```
 
-## Installation
+## 📦 Installation
 
-### Production Setup
 ```bash
-git clone https://github.com/Akramovic1/aws-website-quick-deployer.git
-cd aws-website-quick-deployer
-pip install -r requirements.txt
+pip install awsup
 ```
 
-### Quick Setup
+## 🎯 Usage
+
+**Deploy any static website:**
 ```bash
-# Clone and install
-git clone https://github.com/Akramovic1/aws-website-quick-deployer.git
-cd aws-website-quick-deployer
-pip install boto3 botocore rich click
+# React/Next.js project
+npm run build
+awsup deploy yourdomain.com --website-path ./build
+
+# Vue/Nuxt project  
+npm run generate
+awsup deploy yourdomain.com --website-path ./dist
+
+# Static HTML project
+awsup deploy yourdomain.com --website-path ./public
+
+# Jekyll/Hugo project
+awsup deploy yourdomain.com --website-path ./_site
 ```
 
-## Quick Start
-
-### Default Behavior (Recommended)
-
-Simply run the script with your domain name - it will handle both phases with a pause for NS configuration:
-
+**Other commands:**
 ```bash
-# Run complete deployment with automatic pause for NS configuration
-python aws_deploy.py yourdomain.com
+# Check deployment status
+awsup status yourdomain.com
 
-# With website files
-python aws_deploy.py yourdomain.com --website-path ./dist
+# Clear CDN cache  
+awsup invalidate yourdomain.com
 
-# Without website files (uses default Coming Soon page)
-python aws_deploy.py yourdomain.com
+# Remove all AWS resources
+awsup cleanup yourdomain.com
+
+# Deploy in phases (advanced)
+awsup phase1 yourdomain.com    # DNS setup
+awsup phase2 yourdomain.com    # Full deployment
 ```
 
 The script will:
