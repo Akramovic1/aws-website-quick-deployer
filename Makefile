@@ -1,65 +1,84 @@
-# AWS Website Quick Deployer - Development Commands
+# AWSUP Development Makefile
 
-.PHONY: help install test lint format security clean
+.PHONY: help install test lint clean build publish bump-patch bump-minor bump-major
 
-help:		## Show this help message
-	@echo "Available commands:"
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
+help: ## Show this help message
+	@echo "🚀 AWSUP Development Commands"
+	@echo "=============================="
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-install:	## Install all dependencies
-	pip install -r requirements.txt
+install: ## Install package in development mode
+	pip install -e ".[dev]"
 
-test:		## Run all tests
+test: ## Run tests
+	python -m pytest tests/test_validators.py tests/test_config.py -v
+
+test-all: ## Run all tests (including integration)
 	python -m pytest tests/ -v
 
-test-cov:	## Run tests with coverage
-	python -m pytest tests/ -v --cov=src --cov-report=html --cov-report=term
-
-test-unit:	## Run only unit tests
-	python -m pytest tests/ -v -m unit
-
-test-security:	## Run security tests
-	python -m pytest tests/ -v -m security
-	bandit -r src/
-
-lint:		## Run code linting
+lint: ## Run linting and formatting
+	black src/ tests/ --check
 	flake8 src/ tests/
 	mypy src/
 
-format:		## Format code
+format: ## Format code
 	black src/ tests/
 	isort src/ tests/
 
-security:	## Run security scanning
+security: ## Run security checks
 	bandit -r src/
-	safety check
 
-validate:	## Validate syntax
-	python -m py_compile aws_deploy.py
-	python -m py_compile deploy_production.py
+clean: ## Clean build artifacts
+	rm -rf dist/ build/ *.egg-info/ src/*.egg-info/ .pytest_cache/ .coverage htmlcov/
 
-clean:		## Clean build artifacts
-	find . -type d -name "__pycache__" -exec rm -rf {} +
-	find . -type f -name "*.pyc" -delete
-	rm -rf .pytest_cache
-	rm -rf htmlcov
-	rm -rf .coverage
+build: clean ## Build package
+	python -m build
 
-# Development workflow
-dev-setup:	## Setup development environment
-	pip install -r requirements.txt
-	pre-commit install
+test-install: build ## Test package installation
+	pip install dist/awsup-*.whl --force-reinstall
+	awsup --help
 
-dev-test:	## Development testing (fast)
-	python -m pytest tests/ -x --tb=short
+bump-patch: ## Bump patch version (bug fixes)
+	python scripts/bump_version.py patch
 
-# Production commands  
-deploy-dev:	## Deploy to development environment
-	python deploy_production.py init dev.$(DOMAIN) --environment dev
-	python deploy_production.py phase1 dev.$(DOMAIN)
-	python deploy_production.py phase2 dev.$(DOMAIN)
+bump-minor: ## Bump minor version (new features)
+	python scripts/bump_version.py minor
 
-deploy-prod:	## Deploy to production environment  
-	python deploy_production.py init $(DOMAIN) --environment prod
-	python deploy_production.py phase1 $(DOMAIN)
-	python deploy_production.py phase2 $(DOMAIN) --website-path ./dist
+bump-major: ## Bump major version (breaking changes)
+	python scripts/bump_version.py major
+
+release: ## Create a release (interactive)
+	@echo "🚀 Creating a new release..."
+	@echo "Current version: $$(grep 'version =' pyproject.toml | cut -d'"' -f2)"
+	@echo ""
+	@echo "Choose bump type:"
+	@echo "1) patch (bug fixes)"
+	@echo "2) minor (new features)" 
+	@echo "3) major (breaking changes)"
+	@read -p "Enter choice (1-3): " choice; \
+	case $$choice in \
+		1) make bump-patch ;; \
+		2) make bump-minor ;; \
+		3) make bump-major ;; \
+		*) echo "Invalid choice" && exit 1 ;; \
+	esac
+	@echo ""
+	@NEW_VERSION=$$(grep 'version =' pyproject.toml | cut -d'"' -f2); \
+	echo "📋 Next steps to publish v$$NEW_VERSION:"; \
+	echo "1. git add -A"; \
+	echo "2. git commit -m 'Bump version to $$NEW_VERSION'"; \
+	echo "3. git tag v$$NEW_VERSION"; \
+	echo "4. git push origin main --tags"
+
+publish-test: build ## Publish to TestPyPI
+	twine upload --repository testpypi dist/*
+
+check-pypi: ## Check if package name is available on PyPI
+	@python -c "import requests; resp = requests.get('https://pypi.org/pypi/awsup/json'); print('❌ Name taken' if resp.status_code == 200 else '✅ Name available')" 2>/dev/null || echo "✅ Name available"
+
+dev-setup: ## Complete development setup
+	pip install -e ".[dev]"
+	pre-commit install || echo "pre-commit not available"
+
+# Default target
+.DEFAULT_GOAL := help

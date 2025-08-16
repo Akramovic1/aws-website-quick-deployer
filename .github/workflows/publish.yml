@@ -1,0 +1,119 @@
+name: 🚀 Publish AWSUP to PyPI
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g., 2.0.1)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write  # For trusted publishing
+
+jobs:
+  build-and-publish:
+    name: Build and publish to PyPI
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: 📦 Install build dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine wheel
+    
+    - name: 🔄 Update version from tag
+      if: startsWith(github.ref, 'refs/tags/v')
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/v}
+        echo "Updating version to: $VERSION"
+        sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
+        
+        # Update __init__.py version
+        sed -i "s/__version__ = .*/__version__ = \"$VERSION\"/" src/awsup/__init__.py
+        
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+    
+    - name: 🔄 Update version from input
+      if: github.event_name == 'workflow_dispatch'
+      run: |
+        VERSION=${{ github.event.inputs.version }}
+        echo "Updating version to: $VERSION"
+        sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
+        
+        # Update __init__.py version
+        sed -i "s/__version__ = .*/__version__ = \"$VERSION\"/" src/awsup/__init__.py
+        
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+    
+    - name: 🧪 Run tests
+      run: |
+        pip install -e .
+        python -m pytest tests/test_validators.py tests/test_config.py -v
+    
+    - name: 🔍 Validate package
+      run: |
+        # Test CLI works
+        awsup --help
+        
+        # Check version consistency
+        python -c "import awsup; print(f'Package version: {awsup.__version__}')"
+    
+    - name: 🏗️ Build package
+      run: |
+        python -m build
+        
+        # List built files
+        ls -la dist/
+    
+    - name: 🔐 Publish to PyPI (Trusted Publishing)
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        print-hash: true
+        verbose: true
+    
+    - name: 📋 Create GitHub Release
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref_name }}
+        release_name: AWSUP v${{ env.VERSION }}
+        body: |
+          🚀 **AWSUP v${{ env.VERSION }}** 
+          
+          Lightning-fast AWS static website deployment made simple!
+          
+          ## 📦 Installation
+          ```bash
+          pip install awsup==${{ env.VERSION }}
+          ```
+          
+          ## 🚀 Quick Start
+          ```bash
+          awsup deploy yourdomain.com --website-path ./build
+          ```
+          
+          ## 📝 What's New
+          - See [CHANGELOG.md](CHANGELOG.md) for details
+          
+          ---
+          **Full Documentation:** [README.md](README.md)
+        draft: false
+        prerelease: false
