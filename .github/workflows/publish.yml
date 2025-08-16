@@ -21,45 +21,16 @@ jobs:
         python -m pip install --upgrade pip
         pip install build twine
     
-    - name: Auto-bump version if needed
+    - name: Set version from tag
       run: |
-        # Get tag version and current version
         TAG_VERSION=${GITHUB_REF#refs/tags/v}
-        CURRENT_VERSION=$(grep 'version = ' pyproject.toml | cut -d'"' -f2)
+        echo "Setting version to: $TAG_VERSION"
         
-        echo "Tag version: $TAG_VERSION"
-        echo "Current version: $CURRENT_VERSION"
+        # Always use tag version (auto-bump if needed)
+        sed -i "s/version = \".*\"/version = \"$TAG_VERSION\"/" pyproject.toml
+        sed -i "s/__version__ = \".*\"/__version__ = \"$TAG_VERSION\"/" src/awsup/__init__.py
         
-        # If versions don't match, auto-bump
-        if [ "$TAG_VERSION" != "$CURRENT_VERSION" ]; then
-          echo "🤖 Auto-bumping version from $CURRENT_VERSION to $TAG_VERSION"
-          sed -i "s/version = \".*\"/version = \"$TAG_VERSION\"/" pyproject.toml
-          sed -i "s/__version__ = \".*\"/__version__ = \"$TAG_VERSION\"/" src/awsup/__init__.py
-        else
-          echo "✅ Version already matches tag"
-        fi
-        
-        # If tag version is same or older, auto-increment patch
-        if [ "$(printf '%s\n' "$TAG_VERSION" "$CURRENT_VERSION" | sort -V | head -n1)" = "$TAG_VERSION" ] && [ "$TAG_VERSION" != "$CURRENT_VERSION" ]; then
-          echo "🤖 Tag version is older, auto-incrementing patch..."
-          IFS='.' read -ra ADDR <<< "$CURRENT_VERSION"
-          MAJOR=${ADDR[0]}
-          MINOR=${ADDR[1]}
-          PATCH=${ADDR[2]}
-          NEW_PATCH=$((PATCH + 1))
-          NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
-          
-          echo "🤖 Auto-bumping to $NEW_VERSION"
-          sed -i "s/version = \".*\"/version = \"$NEW_VERSION\"/" pyproject.toml
-          sed -i "s/__version__ = \".*\"/__version__ = \"$NEW_VERSION\"/" src/awsup/__init__.py
-          
-          # Update tag for consistency
-          git tag -d $TAG_VERSION || true
-          git tag v$NEW_VERSION
-          echo "VERSION=$NEW_VERSION" >> $GITHUB_ENV
-        else
-          echo "VERSION=$TAG_VERSION" >> $GITHUB_ENV
-        fi
+        echo "VERSION=$TAG_VERSION" >> $GITHUB_ENV
     
     - name: Build package
       run: python -m build
