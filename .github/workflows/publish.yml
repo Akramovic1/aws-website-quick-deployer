@@ -1,42 +1,76 @@
-name: 🚀 Publish to PyPI
+name: 🚀 Publish AWSUP to PyPI
 
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 2.0.3)'
+        required: true
 
 jobs:
   publish:
+    name: Build and Publish
     runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
     
-    - name: Set up Python
+    steps:
+    - name: 📥 Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: 🐍 Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
     
-    - name: Install dependencies
+    - name: 📦 Install tools
       run: |
         python -m pip install --upgrade pip
         pip install build twine
     
-    - name: Set version from tag
+    - name: 🔄 Set version
       run: |
-        TAG_VERSION=${GITHUB_REF#refs/tags/v}
-        echo "Setting version to: $TAG_VERSION"
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          VERSION="${{ github.event.inputs.version }}"
+        else
+          VERSION=${GITHUB_REF#refs/tags/v}
+        fi
         
-        # Always use tag version (auto-bump if needed)
-        sed -i "s/version = \".*\"/version = \"$TAG_VERSION\"/" pyproject.toml
-        sed -i "s/__version__ = \".*\"/__version__ = \"$TAG_VERSION\"/" src/awsup/__init__.py
+        echo "📝 Setting version to: $VERSION"
+        sed -i "s/version = \"[^\"]*\"/version = \"$VERSION\"/" pyproject.toml
+        sed -i "s/__version__ = \"[^\"]*\"/__version__ = \"$VERSION\"/" src/awsup/__init__.py
         
-        echo "VERSION=$TAG_VERSION" >> $GITHUB_ENV
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+        echo "✅ Version updated to $VERSION"
     
-    - name: Build package
-      run: python -m build
+    - name: 🏗️ Build package
+      run: |
+        python -m build
+        ls -la dist/
     
-    - name: Publish to PyPI
+    - name: 🔍 Verify build
+      run: |
+        pip install dist/*.whl
+        awsup --help
+        python -c "import awsup; print(f'✅ Package version: {awsup.__version__}')"
+    
+    - name: 🚀 Publish to PyPI
+      if: env.PYPI_API_TOKEN != ''
       env:
         TWINE_USERNAME: __token__
         TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-      run: twine upload dist/*
+        PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+      run: |
+        echo "📤 Publishing to PyPI..."
+        twine upload dist/* --verbose
+        echo "🎉 Published successfully!"
+    
+    - name: ⚠️ Missing PyPI Token
+      if: env.PYPI_API_TOKEN == ''
+      run: |
+        echo "❌ PYPI_API_TOKEN secret not configured"
+        echo "📋 Please add PYPI_API_TOKEN to GitHub Secrets"
+        exit 1
