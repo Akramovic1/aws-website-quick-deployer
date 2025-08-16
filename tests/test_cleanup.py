@@ -7,8 +7,8 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 from moto import mock_aws
 
-from src.deployer.config import DeploymentConfig
-from src.deployer.production_deployer import CompleteProductionDeployer
+from awsup.config import DeploymentConfig
+from awsup.production_deployer import CompleteProductionDeployer
 
 
 class TestCleanupOperations:
@@ -18,8 +18,8 @@ class TestCleanupOperations:
         """Setup test environment"""
         self.config = DeploymentConfig(domain="example.com", environment="test")
     
-    @patch('src.deployer.config.AWSCredentialValidator.get_account_id')
-    @patch('src.deployer.config.AWSCredentialValidator.validate_credentials')
+    @patch('awsup.config.AWSCredentialValidator.get_account_id')
+    @patch('awsup.config.AWSCredentialValidator.validate_credentials')
     def test_cleanup_phase1(self, mock_validate_creds, mock_get_account):
         """Test Phase 1 cleanup (Route53)"""
         mock_validate_creds.return_value = True
@@ -55,8 +55,8 @@ class TestCleanupOperations:
             finally:
                 os.chdir(original_cwd)
     
-    @patch('src.deployer.config.AWSCredentialValidator.get_account_id')
-    @patch('src.deployer.config.AWSCredentialValidator.validate_credentials')
+    @patch('awsup.config.AWSCredentialValidator.get_account_id')
+    @patch('awsup.config.AWSCredentialValidator.validate_credentials')
     def test_cleanup_phase2(self, mock_validate_creds, mock_get_account):
         """Test Phase 2 cleanup (S3, CloudFront, ACM)"""
         mock_validate_creds.return_value = True
@@ -102,8 +102,8 @@ class TestCleanupOperations:
             finally:
                 os.chdir(original_cwd)
     
-    @patch('src.deployer.config.AWSCredentialValidator.get_account_id')
-    @patch('src.deployer.config.AWSCredentialValidator.validate_credentials')
+    @patch('awsup.config.AWSCredentialValidator.get_account_id')
+    @patch('awsup.config.AWSCredentialValidator.validate_credentials')
     def test_cleanup_all(self, mock_validate_creds, mock_get_account):
         """Test complete cleanup of all resources"""
         mock_validate_creds.return_value = True
@@ -208,8 +208,8 @@ class TestResourceValidation:
         """Setup test environment"""
         self.config = DeploymentConfig(domain="example.com")
     
-    @patch('src.deployer.config.AWSCredentialValidator.get_account_id')
-    @patch('src.deployer.config.AWSCredentialValidator.validate_credentials')
+    @patch('awsup.config.AWSCredentialValidator.get_account_id')
+    @patch('awsup.config.AWSCredentialValidator.validate_credentials')
     def test_resource_health_check(self, mock_validate_creds, mock_get_account):
         """Test resource health checking"""
         mock_validate_creds.return_value = True

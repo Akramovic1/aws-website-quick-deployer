@@ -7,7 +7,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from src.deployer.config import DeploymentConfig, AWSCredentialValidator, StateManager
+from awsup.config import DeploymentConfig, AWSCredentialValidator, StateManager
 
 
 class TestDeploymentConfig:

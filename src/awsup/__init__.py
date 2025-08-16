@@ -1,5 +1,5 @@
 """
-AWS Website Deployer - Production Grade
+AWSUP - Production Grade AWS Website Deployment
 """
 from .config import DeploymentConfig, AWSCredentialValidator, StateManager
 from .validators import DomainValidator, FileValidator, AWSValidator, SecurityValidator

@@ -6,8 +6,8 @@ from unittest.mock import patch, MagicMock
 from moto import mock_aws
 import boto3
 
-from src.deployer.config import DeploymentConfig
-from src.deployer.managers.route53 import Route53Manager
+from awsup.config import DeploymentConfig
+from awsup.managers.route53 import Route53Manager
 
 
 @mock_aws
@@ -67,7 +67,7 @@ class TestRoute53Manager:
         # For moto, we just verify no exceptions were raised
         assert True
     
-    @patch('src.deployer.managers.route53.time.sleep')
+    @patch('awsup.managers.route53.time.sleep')
     def test_retry_with_backoff(self, mock_sleep):
         """Test retry mechanism"""
         # Test successful operation after retries
@@ -113,7 +113,7 @@ class TestRoute53ManagerErrorHandling:
     
     def test_domain_validation_integration(self):
         """Test that manager works with validated domains"""
-        from src.deployer.validators import DomainValidator
+        from awsup.validators import DomainValidator
         
         # Valid domain should work
         is_valid, error = DomainValidator.validate_domain("example.com")

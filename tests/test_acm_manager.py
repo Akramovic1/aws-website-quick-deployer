@@ -6,8 +6,8 @@ from unittest.mock import patch, MagicMock
 from moto import mock_aws
 import boto3
 
-from src.deployer.config import DeploymentConfig
-from src.deployer.managers.acm import ACMManager
+from awsup.config import DeploymentConfig
+from awsup.managers.acm import ACMManager
 
 
 @mock_aws
@@ -40,7 +40,7 @@ class TestACMManager:
         status = self.manager.get_certificate_status(certificate_arn)
         assert status in ['PENDING_VALIDATION', 'ISSUED', 'FAILED', 'NOT_FOUND']
     
-    @patch('src.deployer.managers.acm.time.sleep')
+    @patch('awsup.managers.acm.time.sleep')
     def test_wait_for_certificate(self, mock_sleep):
         """Test waiting for certificate validation"""
         certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/test"

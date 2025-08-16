@@ -1,0 +1,91 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "awsup"
+version = "2.0.0"
+description = "🚀 AWSUP - Lightning-fast AWS static website deployment"
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+    {name = "Ahmed Akram", email = "eng.akramovic@gmail.com"}
+]
+keywords = ["aws", "s3", "cloudfront", "route53", "website", "deployment", "static-site"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: System :: Installation/Setup",
+    "Topic :: Utilities"
+]
+requires-python = ">=3.8"
+dependencies = [
+    "boto3>=1.34.0",
+    "botocore>=1.34.0",
+    "pydantic>=2.0.0",
+    "click>=8.1.0",
+    "rich>=13.0.0",
+    "jinja2>=3.1.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.11.0",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+    "mypy>=1.5.0",
+    "bandit>=1.7.0"
+]
+cdk = [
+    "aws-cdk-lib>=2.100.0",
+    "constructs>=10.0.0"
+]
+
+[project.urls]
+Homepage = "https://github.com/Akramovic1/aws-website-quick-deployer"
+Repository = "https://github.com/Akramovic1/aws-website-quick-deployer"
+Issues = "https://github.com/Akramovic1/aws-website-quick-deployer/issues"
+Documentation = "https://github.com/Akramovic1/aws-website-quick-deployer#readme"
+
+[project.scripts]
+awsup = "awsup.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+awsup = ["templates/*.html", "templates/*.yaml"]
+
+[tool.black]
+line-length = 100
+target-version = ['py38']
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "--cov=src --cov-report=term-missing --cov-report=html"
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = ["B101"]  # Skip assert_used test

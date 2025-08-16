@@ -9,8 +9,8 @@ from unittest.mock import patch, MagicMock
 from moto import mock_aws
 import boto3
 
-from src.deployer.config import DeploymentConfig
-from src.deployer.managers.s3 import S3Manager
+from awsup.config import DeploymentConfig
+from awsup.managers.s3 import S3Manager
 
 
 @mock_aws
@@ -194,7 +194,7 @@ class TestS3ManagerErrorHandling:
     
     def test_file_validation_integration(self):
         """Test integration with file validator"""
-        from src.deployer.validators import FileValidator
+        from awsup.validators import FileValidator
         
         # Test with valid HTML file
         with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as f:

@@ -4,7 +4,7 @@ Tests for validation modules
 import pytest
 import tempfile
 from pathlib import Path
-from src.deployer.validators import DomainValidator, FileValidator, AWSValidator
+from awsup.validators import DomainValidator, FileValidator, AWSValidator
 
 
 class TestDomainValidator:

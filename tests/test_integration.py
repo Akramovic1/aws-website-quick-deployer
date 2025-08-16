@@ -8,8 +8,8 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 from moto import mock_aws
 
-from src.deployer.config import DeploymentConfig
-from src.deployer.production_deployer import CompleteProductionDeployer
+from awsup.config import DeploymentConfig
+from awsup.production_deployer import CompleteProductionDeployer
 
 
 class TestDeploymentWorkflow:
@@ -23,8 +23,8 @@ class TestDeploymentWorkflow:
             environment="test"
         )
     
-    @patch('src.deployer.config.AWSCredentialValidator.get_account_id')
-    @patch('src.deployer.config.AWSCredentialValidator.validate_credentials')
+    @patch('awsup.config.AWSCredentialValidator.get_account_id')
+    @patch('awsup.config.AWSCredentialValidator.validate_credentials')
     def test_deployer_initialization(self, mock_validate_creds, mock_get_account):
         """Test deployer initialization"""
         mock_validate_creds.return_value = True
@@ -39,9 +39,9 @@ class TestDeploymentWorkflow:
         assert deployer.acm_manager is not None
         assert deployer.cloudfront_manager is not None
     
-    @patch('src.deployer.config.AWSCredentialValidator.get_account_id')
-    @patch('src.deployer.config.AWSCredentialValidator.validate_credentials')
-    @patch('src.deployer.config.AWSCredentialValidator.validate_permissions')
+    @patch('awsup.config.AWSCredentialValidator.get_account_id')
+    @patch('awsup.config.AWSCredentialValidator.validate_credentials')
+    @patch('awsup.config.AWSCredentialValidator.validate_permissions')
     def test_preflight_checks_success(self, mock_perms, mock_validate_creds, mock_get_account):
         """Test successful preflight checks"""
         mock_validate_creds.return_value = True
@@ -59,9 +59,9 @@ class TestDeploymentWorkflow:
         
         assert result is True
     
-    @patch('src.deployer.config.AWSCredentialValidator.get_account_id')
-    @patch('src.deployer.config.AWSCredentialValidator.validate_credentials')
-    @patch('src.deployer.config.AWSCredentialValidator.validate_permissions')
+    @patch('awsup.config.AWSCredentialValidator.get_account_id')
+    @patch('awsup.config.AWSCredentialValidator.validate_credentials')
+    @patch('awsup.config.AWSCredentialValidator.validate_permissions')
     def test_preflight_checks_failure(self, mock_perms, mock_validate_creds, mock_get_account):
         """Test preflight checks with missing permissions"""
         mock_validate_creds.return_value = True
@@ -172,7 +172,7 @@ class TestErrorRecovery:
         
         mock_client.return_value = mock_route53
         
-        from src.deployer.managers.route53 import Route53Manager
+        from awsup.managers.route53 import Route53Manager
         manager = Route53Manager(self.config)
         
         # Should succeed after retries
@@ -221,7 +221,7 @@ class TestFileValidationIntegration:
     
     def test_secure_file_upload(self):
         """Test that file validation prevents malicious uploads"""
-        from src.deployer.validators import FileValidator
+        from awsup.validators import FileValidator
         
         # Test malicious file detection
         with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as f:
@@ -245,7 +245,7 @@ class TestFileValidationIntegration:
     
     def test_file_size_limits(self):
         """Test file size validation"""
-        from src.deployer.validators import FileValidator
+        from awsup.validators import FileValidator
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
             # Write small file (should pass)

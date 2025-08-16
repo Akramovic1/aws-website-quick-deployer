@@ -6,8 +6,8 @@ from unittest.mock import patch, MagicMock
 from moto import mock_aws
 import boto3
 
-from src.deployer.config import DeploymentConfig
-from src.deployer.managers.cloudfront import CloudFrontManager
+from awsup.config import DeploymentConfig
+from awsup.managers.cloudfront import CloudFrontManager
 
 
 @mock_aws
@@ -48,7 +48,7 @@ class TestCloudFrontManager:
         status = self.manager.get_distribution_status(distribution_id)
         assert status in ['InProgress', 'Deployed']
     
-    @patch('src.deployer.managers.cloudfront.time.sleep')
+    @patch('awsup.managers.cloudfront.time.sleep')
     def test_wait_for_distribution(self, mock_sleep):
         """Test waiting for distribution deployment"""
         distribution_id = "E123456789ABCDEF"

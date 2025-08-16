@@ -131,7 +131,7 @@ class S3Manager(BaseAWSManager):
             if not website_path:
                 # Use default landing page
                 self.logger.info("Using default 'Coming Soon' page...")
-                default_path = Path(__file__).parent.parent.parent.parent / 'default-index.html'
+                default_path = Path(__file__).parent.parent / 'templates' / 'default-index.html'
                 website_path = str(default_path)
             
             # Validate website path
