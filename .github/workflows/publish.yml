@@ -64,6 +64,7 @@ jobs:
     - name: 🧪 Run tests
       run: |
         pip install -e .
+        pip install pytest pytest-mock
         python -m pytest tests/test_validators.py tests/test_config.py -v
     
     - name: 🔍 Validate package

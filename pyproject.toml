@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "awsup"
-version = "2.0.0"
+version = "2.0.1"
 description = "🚀 AWSUP - Lightning-fast AWS static website deployment"
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -74,7 +74,7 @@ line-length = 100
 target-version = ['py38']
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "2.0.1"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
